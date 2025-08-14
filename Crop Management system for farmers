@@ -1,0 +1,61 @@
+
+import sys
+import subprocess
+
+
+def install_if_missing(package):
+    try:
+        _import_(package)
+    except ImportError:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+
+
+install_if_missing("pandas")
+install_if_missing("sklearn")
+
+
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score
+import warnings
+warnings.filterwarnings("ignore")
+
+url = "https://raw.githubusercontent.com/insaid2018/Term-Project/master/Crop_recommendation.csv"
+data = pd.read_csv(url)
+
+
+X = data.drop('label', axis=1)
+y = data['label']
+
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+
+model = RandomForestClassifier(n_estimators=100, random_state=42)
+model.fit(X_train, y_train)
+
+
+y_pred = model.predict(X_test)
+_ = accuracy_score(y_test, y_pred)
+
+
+def recommend_crop(N, P, K, temperature, humidity, ph, rainfall):
+    input_data = pd.DataFrame([[N, P, K, temperature, humidity, ph, rainfall]],
+                              columns=['N', 'P', 'K', 'temperature', 'humidity', 'ph', 'rainfall'])
+    prediction = model.predict(input_data)
+    return prediction[0]
+
+if _name_ == "_main_":
+    print("Crop Recommendation System")
+    print("--------------------------")
+    N = int(input("Enter Nitrogen content in soil: "))
+    P = int(input("Enter Phosphorus content in soil: "))
+    K = int(input("Enter Potassium content in soil: "))
+    temperature = float(input("Enter temperature (°C): "))
+    humidity = float(input("Enter humidity (%): "))
+    ph = float(input("Enter soil pH value: "))
+    rainfall = float(input("Enter rainfall (mm): "))
+
+    crop = recommend_crop(N, P, K, temperature, humidity, ph, rainfall)
+    print(f"\nRecommended Crop: {crop}")
