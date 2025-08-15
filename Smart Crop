@@ -59,3 +59,11 @@ if _name_ == "_main_":
 
     crop = recommend_crop(N, P, K, temperature, humidity, ph, rainfall)
     print(f"\nRecommended Crop: {crop}")
+
+
+
+/*SUBMITTED BY
+AADYA JHA (00101042024)
+DISHIKA SINGH (02501042024)
+MANISHA (04101042024)
+MAE-1*/
