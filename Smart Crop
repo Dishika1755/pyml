@@ -1,260 +1,60 @@
-/*SUBMITTED BY
-AADYA JHA (00101042024)
-DISHIKA SINGH (02501042024)
-MANISHA (04101042024)
-MAE-1*/
+import sys
+import subprocess
 
+
+def install_if_missing(package):
+    try:
+        _import_(package)
+    except ImportError:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+
+
+install_if_missing("pandas")
+install_if_missing("sklearn")
 
 
 import pandas as pd
-import numpy as np
-import os
-import zipfile
-import subprocess
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.svm import SVC
-from sklearn.linear_model import LogisticRegression
-from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score
 import warnings
 warnings.filterwarnings("ignore")
 
-# ------------------------- Dataset Download -------------------------
-def download_kaggle_dataset():
-    if not os.path.exists("crop_recommendation.csv"):
-        print("Downloading dataset from Kaggle...")
-        subprocess.run(["kaggle", "datasets", "download", "-d", "atharvaingle/crop-recommendation-dataset"])
-        with zipfile.ZipFile("crop-recommendation-dataset.zip", 'r') as zip_ref:
-            zip_ref.extractall(".")
-        print("Dataset downloaded and extracted.")
-    else:
-        print("Kaggle dataset already exists.")
+url = "https://raw.githubusercontent.com/insaid2018/Term-Project/master/Crop_recommendation.csv"
+data = pd.read_csv(url)
 
-def create_limited_dataset():
-    """Create a dataset with limited features to reduce accuracy."""
-    if not os.path.exists("limited_crop_dataset.csv"):
-        df = pd.read_csv("crop_recommendation.csv")
-        # Use only 2-3 features to intentionally limit model performance
-        df_limited = df[["N", "ph", "label"]]  # Only nitrogen and pH
-        df_limited.to_csv("limited_crop_dataset.csv", index=False)
-        print("Limited feature dataset created.")
-    else:
-        print("Limited feature dataset already exists.")
 
-def add_noise_to_data(data, noise_level=0.3):
-    """Add noise to features to reduce model accuracy."""
-    data_noisy = data.copy()
-    feature_cols = data_noisy.columns[:-1]  # All except 'label'
-    
-    for col in feature_cols:
-        if data_noisy[col].dtype in ['float64', 'int64']:
-            noise = np.random.normal(0, data_noisy[col].std() * noise_level, len(data_noisy))
-            data_noisy[col] = data_noisy[col] + noise
-            # Ensure values stay positive where appropriate
-            if col in ['N', 'P', 'K', 'temperature', 'humidity', 'rainfall']:
-                data_noisy[col] = np.maximum(data_noisy[col], 0)
-    
-    return data_noisy
+X = data.drop('label', axis=1)
+y = data['label']
 
-# ------------------------- Load Dataset -------------------------
-def load_dataset(model_name, use_noise=False, use_limited_features=False):
-    if use_limited_features:
-        dataset_path = "limited_crop_dataset.csv"
-    elif model_name in ["SVM", "LogisticRegression"]:
-        # Create even more limited dataset for SVM/LogReg
-        if not os.path.exists("svm_crop_dataset.csv"):
-            df = pd.read_csv("crop_recommendation.csv")
-            df_svm = df[["N", "ph", "label"]]  # Only 2 features
-            df_svm.to_csv("svm_crop_dataset.csv", index=False)
-        dataset_path = "svm_crop_dataset.csv"
-    else:
-        dataset_path = "crop_recommendation.csv"
-    
-    try:
-        data = pd.read_csv(dataset_path)
-        if use_noise:
-            data = add_noise_to_data(data, noise_level=0.4)  # Higher noise for lower accuracy
-        return data
-    except Exception as e:
-        print(f"Error loading dataset: {e}")
-        return None
 
-# ------------------------- Preprocess Data -------------------------
-def preprocess_data(data, model_name):
-    X = data.drop("label", axis=1)
-    y = data["label"]
-    scaler = None
-    if model_name in ["SVM", "LogisticRegression"]:
-        scaler = StandardScaler()
-        X = scaler.fit_transform(X)
-    return X, y, scaler
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-# ------------------------- Model Selection (Deliberately Weakened) -------------------------
-def select_model(name):
-    """Select models with parameters that intentionally reduce accuracy to ~80%."""
-    if name == "RandomForest":
-        # Reduce trees and increase min_samples to weaken the model
-        return RandomForestClassifier(
-            n_estimators=10,      # Much fewer trees
-            max_depth=3,          # Very shallow trees
-            min_samples_split=20,  # Require more samples to split
-            random_state=42
-        )
-    elif name == "DecisionTree":
-        # Severely limit tree depth
-        return DecisionTreeClassifier(
-            max_depth=3,           # Very shallow tree
-            min_samples_split=15,  # Require more samples to split
-            random_state=42
-        )
-    elif name == "SVM":
-        # Use linear kernel which is less flexible
-        return SVC(
-            kernel='linear',       # Less flexible than RBF
-            C=0.1,                # Lower regularization
-            random_state=42
-        )
-    elif name == "LogisticRegression":
-        # Increase regularization to reduce complexity
-        return LogisticRegression(
-            C=0.01,               # Strong regularization
-            random_state=42, 
-            max_iter=50           # Fewer iterations
-        )
-    else:
-        raise ValueError("Invalid model name.")
 
-# ------------------------- Training and Evaluation -------------------------
-def train_and_evaluate(model_name, use_noise=True, use_limited_features=True):
-    print(f"\nLoading dataset for {model_name}...")
-    data = load_dataset(model_name, use_noise=use_noise, use_limited_features=use_limited_features)
-    if data is None:
-        return None, None, None
-    
-    print(f"Using {len(data.columns)-1} features: {list(data.columns[:-1])}")
-    
-    X, y, scaler = preprocess_data(data, model_name)
-    
-    # Use larger test set to make training harder
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, 
-        test_size=0.4,  # Larger test set = less training data
-        random_state=42
-    )
-    
-    model = select_model(model_name)
-    model.fit(X_train, y_train)
-    y_pred = model.predict(X_test)
-    accuracy = accuracy_score(y_test, y_pred)
-    
-    print(f"{model_name} Accuracy: {accuracy:.4f}")
-    
-    # Show if we hit target accuracy
-    if 0.75 <= accuracy <= 0.85:
-        print(f"Target accuracy range achieved!")
-    elif accuracy > 0.85:
-        print(f"Accuracy higher than target. Consider more limitations.")
-    else:
-        print(f"Accuracy lower than target. Consider fewer limitations.")
-    
-    return model, scaler, data.drop("label", axis=1).columns
+model = RandomForestClassifier(n_estimators=100, random_state=42)
+model.fit(X_train, y_train)
 
-# ------------------------- Alternative: Random Baseline -------------------------
-def create_random_baseline(data):
-    """Create a random baseline that achieves exactly 80% accuracy."""
-    crops = data['label'].unique()
-    X = data.drop("label", axis=1)
-    y = data["label"]
-    
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-    
-    # Create predictions that are 80% correct
-    y_pred = []
-    for true_label in y_test:
-        if np.random.random() < 0.8:  # 80% chance of correct prediction
-            y_pred.append(true_label)
-        else:  # 20% chance of random wrong prediction
-            wrong_crops = [crop for crop in crops if crop != true_label]
-            y_pred.append(np.random.choice(wrong_crops))
-    
-    accuracy = accuracy_score(y_test, y_pred)
-    print(f"Random Baseline Accuracy: {accuracy:.4f}")
-    return y_pred, y_test
 
-# ------------------------- Recommendation with Limited Model -------------------------
-def recommend_crop(model, scaler, feature_names, model_name):
-    print(f"Enter details for crop recommendation using {model_name}:")
-    print(f"Note: This model uses limited features for ~80% accuracy")
-    
-    values = []
-    feature_ranges = {
-        "N": "Nitrogen (0-140 kg/ha)",
-        "P": "Phosphorus (5-145 kg/ha)", 
-        "K": "Potassium (5-205 kg/ha)",
-        "ph": "pH (3.5-10.0)",
-        "temperature": "Temperature (8-45°C)",
-        "humidity": "Humidity (14-100%)",
-        "rainfall": "Rainfall (20-300 mm)"
-    }
-    
-    for feature in feature_names:
-        while True:
-            try:
-                range_info = feature_ranges.get(feature, feature)
-                val = float(input(f"Enter {range_info}: "))
-                values.append(val)
-                break
-            except ValueError:
-                print("Please enter a valid number.")
-    
-    input_df = pd.DataFrame([values], columns=feature_names)
-    if model_name in ["SVM", "LogisticRegression"] and scaler:
-        input_df = scaler.transform(input_df)
-    
-    prediction = model.predict(input_df)
-    print(f"\n Recommended Crop: {prediction[0]}")
-    print(f" Note: This prediction has ~80% accuracy")
+y_pred = model.predict(X_test)
+_ = accuracy_score(y_test, y_pred)
 
-# ------------------------- Main -------------------------
-def main():
-    print(" Crop Recommendation System (Target: 80% Accuracy) ")
-    
-    download_kaggle_dataset()
-    create_limited_dataset()
-    
-    print("\n This system is configured to achieve ~80% accuracy through:")
-    print("   • Limited features (only N and pH)")
-    print("   • Weakened model parameters")
-    print("   • Added data noise")
-    print("   • Larger test set (less training data)")
-    
-    print("\nSelect a model:")
-    models = ["RandomForest", "DecisionTree", "SVM", "LogisticRegression", "RandomBaseline"]
-    for i, name in enumerate(models):
-        print(f"{i}. {name}")
-    
-    while True:
-        try:
-            choice = int(input("Enter model number: "))
-            if 0 <= choice < len(models):
-                model_name = models[choice]
-                break
-            else:
-                print("Invalid selection.")
-        except ValueError:
-            print("Please enter a valid number.")
-    
-    if model_name == "RandomBaseline":
-        # Special case for random baseline
-        data = pd.read_csv("crop_recommendation.csv")
-        create_random_baseline(data)
-    else:
-        model, scaler, feature_names = train_and_evaluate(
-            model_name, 
-            use_noise=True,           # Add noise to reduce accuracy
-            use_limited_features=True  # Use fewer features
-        )
-        if model:
-            recommend_crop(model, scaler, feature_names, model_name)
+
+def recommend_crop(N, P, K, temperature, humidity, ph, rainfall):
+    input_data = pd.DataFrame([[N, P, K, temperature, humidity, ph, rainfall]],
+                              columns=['N', 'P', 'K', 'temperature', 'humidity', 'ph', 'rainfall'])
+    prediction = model.predict(input_data)
+    return prediction[0]
+
+if _name_ == "_main_":
+    print("Crop Recommendation System")
+    print("--------------------------")
+    N = int(input("Enter Nitrogen content in soil: "))
+    P = int(input("Enter Phosphorus content in soil: "))
+    K = int(input("Enter Potassium content in soil: "))
+    temperature = float(input("Enter temperature (°C): "))
+    humidity = float(input("Enter humidity (%): "))
+    ph = float(input("Enter soil pH value: "))
+    rainfall = float(input("Enter rainfall (mm): "))
+
+    crop = recommend_crop(N, P, K, temperature, humidity, ph, rainfall)
+    print(f"\nRecommended Crop: {crop}")
